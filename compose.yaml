@@ -1,0 +1,11 @@
+services:
+  app:
+    build: .
+    image: bookrec:dev
+    volumes:
+      - bookrec-data:/data      # SQLite cache + Hugging Face model cache
+      - ./input:/input:ro       # your List A / List B files
+      - ./src:/app/src          # edit code without rebuilding the image
+
+volumes:
+  bookrec-data:
