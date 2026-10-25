@@ -19,6 +19,7 @@ src/
   openlibrary.ts  BookResolver implementation (Open Library)
   store.ts        BookStore implementations (SQLite, in-memory)
   embedder.ts     Embedder implementation (Transformers.js, all-MiniLM-L6-v2)
+  caching-embedder.ts  Embedder decorator: persistent vector cache, embeds only misses
   service.ts      RecommenderService: the business logic, no CLI or I/O formatting
   cli.ts          argument parsing and printing only
 ```
@@ -66,6 +67,8 @@ npm run typecheck
   It prints an experimental warning, which the Docker setup silences.
 - If `npm install` fails fetching `onnxruntime-node` extras (restricted network),
   `npm install --ignore-scripts` works: the CPU runtime is bundled.
-- Known gaps carried over from the Python version: embeddings are recomputed each
-  run, Open Library matching is fuzzy (weak matches are listed on stderr), and
+- Embeddings are cached in the same SQLite file, keyed by (model, sha256 of the
+  embedded text), so changed metadata or a different `BOOKREC_MODEL` re-embeds
+  automatically. With a warm cache the model is never loaded.
+- Known gaps carried over from the Python version: Open Library matching is fuzzy (weak matches are listed on stderr), and
   there is no Audible importer yet (map its columns in `importers.ts`).

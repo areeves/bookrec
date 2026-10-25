@@ -26,4 +26,10 @@ export interface Embedder {
   embed(texts: string[]): Promise<number[][]>;
 }
 
+/** Persistent cache of embedding vectors, keyed by (model, hash of the embedded text). */
+export interface EmbeddingStore {
+  getEmbeddings(model: string, textHashes: string[]): Map<string, number[]>;
+  putEmbeddings(model: string, rows: Array<[textHash: string, vector: number[]]>): void;
+}
+
 export type Logger = (message: string) => void;

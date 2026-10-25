@@ -11,7 +11,7 @@ type Extractor = (
 export class TransformersEmbedder implements Embedder {
   private extractor: Promise<Extractor> | null = null;
 
-  constructor(private readonly modelName = process.env.BOOKREC_MODEL ?? DEFAULT_MODEL) {}
+  constructor(readonly modelName = process.env.BOOKREC_MODEL ?? DEFAULT_MODEL) {}
 
   async embed(texts: string[]): Promise<number[][]> {
     // The model (and the library) load on first use, so offline runs and tests stay fast.

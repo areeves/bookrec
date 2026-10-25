@@ -1,6 +1,7 @@
 #!/usr/bin/env -S node --disable-warning=ExperimentalWarning --import tsx
 /** Command line interface: bookrec recommend ... (parsing and printing only). */
 import { parseArgs } from "node:util";
+import { CachingEmbedder } from "./caching-embedder.js";
 import { TransformersEmbedder } from "./embedder.js";
 import { isResolved, type Book } from "./models.js";
 import { OpenLibraryResolver } from "./openlibrary.js";
@@ -90,10 +91,11 @@ async function main(argv: string[]): Promise<number> {
   const store = new SqliteStore(values.db as string);
   let result: RecommendResult;
   try {
+    const model = new TransformersEmbedder();
     const service = new RecommenderService({
       resolver: new OpenLibraryResolver(),
       store,
-      embedder: new TransformersEmbedder(),
+      embedder: new CachingEmbedder(model, store, model.modelName),
       log,
     });
     result = await service.recommend({
