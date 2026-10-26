@@ -18,6 +18,7 @@ const USAGE = `usage: bookrec recommend --read FILE --candidates FILE [options]
   --mmr X             MMR lambda, 1.0 = no diversity (default 0.7)
   --db PATH           SQLite cache (default $BOOKREC_DB or data/bookrec.sqlite)
   --refresh           ignore cached lookups
+  --retry-unresolved  look up again only books that were unresolved or low-confidence
   --offline           use cache only, no network
   --json              machine-readable output
 `;
@@ -79,6 +80,7 @@ async function main(argv: string[]): Promise<number> {
       mmr: { type: "string", default: "0.7" },
       db: { type: "string", default: process.env.BOOKREC_DB ?? "data/bookrec.sqlite" },
       refresh: { type: "boolean", default: false },
+      "retry-unresolved": { type: "boolean", default: false },
       offline: { type: "boolean", default: false },
       json: { type: "boolean", default: false },
     },
@@ -105,6 +107,7 @@ async function main(argv: string[]): Promise<number> {
       m: Number(values.m),
       mmrLambda: Number(values.mmr),
       refresh: values.refresh,
+      retryUnresolved: values["retry-unresolved"],
       offline: values.offline,
     });
   } finally {

@@ -1,12 +1,22 @@
 /** Resolve entries to Open Library works and fetch description/subjects. */
 import { ratio } from "./fuzzy.js";
-import { authorSurname, book, fallbackKey, normalizeTitle, type Book, type Entry } from "./models.js";
+import {
+  authorSurname,
+  book,
+  fallbackKey,
+  matchTitle,
+  primaryAuthor,
+  searchTitle,
+  type Book,
+  type Entry,
+} from "./models.js";
 import { ResolverError, type BookResolver } from "./ports.js";
 
 const BASE = "https://openlibrary.org";
 const USER_AGENT = "bookrec/0.1 (personal project)";
 export const MIN_CONFIDENCE = 0.6; // below this the match is treated as unresolved
 const MAX_SUBJECTS = 15;
+export const GOOD_ENOUGH = 0.85; // stop trying further queries at this confidence
 const MIN_INTERVAL_MS = 400; // between requests, to stay polite
 
 export interface SearchDoc {
@@ -20,10 +30,10 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** 0..1 match confidence: 70% title similarity, 30% author surname. */
 export function scoreDoc(entry: Entry, doc: SearchDoc): number {
-  const titleSim = ratio(normalizeTitle(entry.title), normalizeTitle(doc.title ?? ""));
+  const titleSim = ratio(matchTitle(entry.title, entry.author), matchTitle(doc.title ?? ""));
   let authorSim = titleSim;
   if (entry.author) {
-    const want = authorSurname(entry.author);
+    const want = authorSurname(primaryAuthor(entry.author));
     const have = (doc.author_name ?? []).map(authorSurname);
     authorSim = Math.max(0, ...have.map((h) => ratio(want, h)));
   }
@@ -43,14 +53,42 @@ export function pickBest(entry: Entry, docs: SearchDoc[]): [SearchDoc | null, nu
   return [best, bestScore];
 }
 
+/**
+ * Queries to try, strictest first. Credits like "- translator" and co-authors
+ * would make Solr require words the catalogue does not have, so only the first
+ * author is sent, and a title-only query (ranked locally by author) backs it up.
+ */
+export function searchPlans(entry: Entry): Array<Record<string, string>> {
+  const title = searchTitle(entry.title, entry.author);
+  const author = primaryAuthor(entry.author);
+  const plans: Array<Record<string, string>> = [];
+  if (author) plans.push({ title, author, limit: "5" });
+  plans.push({ title, limit: "10" });
+  if (title.includes("'")) plans.push({ title: title.replaceAll("'", ""), limit: "10" });
+  plans.push({ q: `${title} ${authorSurname(author)}`.trim(), limit: "10" });
+  const seen = new Set<string>();
+  return plans.filter((plan) => {
+    const id = JSON.stringify(plan);
+    return seen.has(id) ? false : (seen.add(id), true);
+  });
+}
+
 export class OpenLibraryResolver implements BookResolver {
   private lastCall = 0;
 
   constructor(private readonly fetchFn: typeof fetch = fetch) {}
 
   async resolve(entry: Entry): Promise<Book> {
-    const docs = await this.search(entry.title, entry.author);
-    const [doc, confidence] = pickBest(entry, docs);
+    let doc: SearchDoc | null = null;
+    let confidence = 0;
+    for (const plan of searchPlans(entry)) {
+      const [candidate, score] = pickBest(entry, await this.search(plan));
+      if (candidate && score > confidence) {
+        doc = candidate;
+        confidence = score;
+      }
+      if (confidence >= GOOD_ENOUGH) break;
+    }
     if (!doc || confidence < MIN_CONFIDENCE) {
       return book(fallbackKey(entry.title, entry.author), entry.title, entry.author);
     }
@@ -62,19 +100,10 @@ export class OpenLibraryResolver implements BookResolver {
     });
   }
 
-  private async search(title: string, author: string): Promise<SearchDoc[]> {
+  private async search(params: Record<string, string>): Promise<SearchDoc[]> {
     const fields = "key,title,author_name,subject";
-    const strict: Record<string, string> = {
-      title: normalizeTitle(title),
-      limit: "5",
-      fields,
-    };
-    if (author) strict.author = author;
-    const docs = (await this.getJson<{ docs?: SearchDoc[] }>("/search.json", strict))?.docs ?? [];
-    if (docs.length) return docs;
-    // looser free-text fallback
-    const loose = { q: `${title} ${author}`.trim(), limit: "5", fields };
-    return (await this.getJson<{ docs?: SearchDoc[] }>("/search.json", loose))?.docs ?? [];
+    const result = await this.getJson<{ docs?: SearchDoc[] }>("/search.json", { ...params, fields });
+    return result?.docs ?? [];
   }
 
   private async fetchDescription(workKey: string): Promise<string> {

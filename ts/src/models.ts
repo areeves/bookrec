@@ -84,3 +84,54 @@ export function authorSurname(author: string): string {
 export function fallbackKey(title: string, author: string): string {
   return `${normalizeTitle(title)}|${authorSurname(author)}`;
 }
+
+// ---------------------------------------------------------------------------
+// Matching helpers. These are used for searching and scoring only: cache keys
+// (fallbackKey) keep using normalizeTitle/authorSurname above so existing
+// caches stay valid.
+
+/** "Name - translator" / "Name - afterword": drop the credit after the dash. */
+const stripRole = (name: string): string => name.replace(/\s+-\s+.*$/, "").trim();
+
+/**
+ * First credited author as a plain name, without roles or co-contributors:
+ * "Andrzej Sapkowski, David French - translator" -> "Andrzej Sapkowski".
+ */
+export function primaryAuthor(author: string): string {
+  const first = author.split(/\s*;\s*|\s+&\s+|\s+and\s+/i)[0] ?? "";
+  const [head, second, ...rest] = first.split(",").map(stripRole).filter(Boolean);
+  if (!head) return "";
+  // "Tolkien, J. R. R." (surname first): the second part is only initials.
+  if (second && !rest.length && /^(?:[a-z]\.?\s*){1,3}$/i.test(second)) return `${second} ${head}`;
+  return head;
+}
+
+/** Title with subtitle, series/format noise and "by <author>" tails removed; punctuation kept. */
+function coreTitle(title: string, author: string): string {
+  let t = toAscii(title.replace(/[\u2018\u2019]/g, "'")).toLowerCase();
+  const by = toAscii(primaryAuthor(author)).toLowerCase();
+  const cut = by ? t.indexOf(` by ${by}`) : -1;
+  if (cut > 0) t = t.slice(0, cut);
+  t = t.replace(/--+/g, ": "); // "Dark One--Forgotten" is "Dark One: Forgotten"
+  const steps: Array<(s: string) => string> = [
+    (s) => s.replace(/[(\[].*?[)\]]/g, " "),
+    (s) => s.split(/\s*[:\u2013\u2014]\s*|\s+-\s+/)[0] ?? s,
+    (s) => s.replace(/\b(?:unabridged|abridged|a novel|audiobook|mp3|cd)\b/g, " "),
+    (s) => s.replace(/,?\s*\b(?:book|volume|vol)\.?\s+\d+(?:\.\d+)?\s*$/, " "),
+  ];
+  for (const step of steps) {
+    const candidate = step(t);
+    if (/[a-z0-9]/.test(candidate)) t = candidate; // never reduce a title to nothing
+  }
+  return t;
+}
+
+/** Title for comparing two titles: apostrophes dropped, everything else spaced. */
+export function matchTitle(title: string, author = ""): string {
+  return coreTitle(title, author).replace(/'/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+/** Title for a search query: like matchTitle but apostrophes kept (the index tokenizes them). */
+export function searchTitle(title: string, author = ""): string {
+  return coreTitle(title, author).replace(/[^a-z0-9']+/g, " ").trim();
+}

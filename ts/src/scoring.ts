@@ -62,6 +62,17 @@ export function mmrSelect(scores: number[], emb: Matrix, k: number, lambda = 0.7
   return selected;
 }
 
+/** One entry per work key; duplicates keep the first book and the highest rating. */
+export function dedupeBooks(books: Book[]): Book[] {
+  const byKey = new Map<string, Book>();
+  for (const b of books) {
+    const kept = byKey.get(b.key);
+    if (!kept) byKey.set(b.key, b);
+    else if (b.rating !== null && (kept.rating === null || b.rating > kept.rating)) kept.rating = b.rating;
+  }
+  return [...byKey.values()];
+}
+
 /** Candidates minus already-read and duplicate books (by work key). */
 export function eligibleCandidates(read: Book[], candidates: Book[]): Book[] {
   const readKeys = new Set(read.map((b) => b.key));

@@ -11,12 +11,14 @@ import {
   type Embedder,
   type Logger,
 } from "./ports.js";
-import { eligibleCandidates, recommend, type Rec } from "./scoring.js";
+import { dedupeBooks, eligibleCandidates, recommend, type Rec } from "./scoring.js";
 
 export const LOW_CONFIDENCE = 0.8;
 
 export interface LoadOptions {
   refresh?: boolean;
+  /** Look up again any cached book that is unresolved or below LOW_CONFIDENCE. */
+  retryUnresolved?: boolean;
   offline?: boolean;
 }
 
@@ -47,12 +49,15 @@ export class RecommenderService {
     this.deps.log?.(message);
   }
 
-  async loadBooks(entries: Entry[], { refresh = false, offline = false }: LoadOptions = {}) {
+  async loadBooks(entries: Entry[], { refresh = false, offline = false, retryUnresolved = false }: LoadOptions = {}) {
     const { resolver, store } = this.deps;
     const books: Book[] = [];
     for (const [index, entry] of entries.entries()) {
       const inputKey = fallbackKey(entry.title, entry.author);
       let found = refresh ? null : store.get(inputKey);
+      if (found && retryUnresolved && (!isResolved(found) || found.confidence < LOW_CONFIDENCE)) {
+        found = null;
+      }
       if (!found) {
         if (offline) {
           found = book(inputKey, entry.title, entry.author);
@@ -92,9 +97,17 @@ export class RecommenderService {
   }
 
   async recommend(req: RecommendRequest): Promise<RecommendResult> {
-    const options = { refresh: req.refresh, offline: req.offline };
+    const options = {
+      refresh: req.refresh,
+      offline: req.offline,
+      retryUnresolved: req.retryUnresolved,
+    };
     this.log("Loading read list...");
-    const read = await this.loadBooks(loadCsv(req.readPath, true), options);
+    const loaded = await this.loadBooks(loadCsv(req.readPath, true), options);
+    const read = dedupeBooks(loaded);
+    if (read.length < loaded.length) {
+      this.log(`Merged ${loaded.length - read.length} duplicate book(s) in the read list`);
+    }
     this.log("Loading candidate list...");
     const candidates = await this.loadBooks(loadCsv(req.candidatesPath), options);
 

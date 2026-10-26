@@ -89,6 +89,49 @@ describe("RecommenderService.loadBooks", () => {
   });
 });
 
+describe("RecommenderService.loadBooks retryUnresolved", () => {
+  const e = entry("Caliban's War", "James S. A. Corey");
+  const inputKey = fallbackKey(e.title, e.author);
+  const resolvedBook = book("OL9W", "Caliban's War", "James S. A. Corey", { confidence: 0.95 });
+  const countingResolver = () => {
+    const resolve = vi.fn(async (): Promise<Book> => structuredClone(resolvedBook));
+    return { resolve };
+  };
+
+  it("looks an unresolved cached book up again and replaces it", async () => {
+    store.put(inputKey, book(inputKey, e.title, e.author));
+    const resolver = countingResolver();
+
+    const [loaded] = await makeService(resolver).loadBooks([e], { retryUnresolved: true });
+
+    expect(resolver.resolve).toHaveBeenCalledTimes(1);
+    expect(loaded?.key).toBe("OL9W");
+    expect(store.get(inputKey)?.key).toBe("OL9W");
+  });
+
+  it("also retries low-confidence matches but leaves confident ones alone", async () => {
+    const weak = book("OL1W", "Caliban's War", "Corey", { confidence: 0.7 });
+    store.put(inputKey, weak);
+    const resolver = countingResolver();
+    await makeService(resolver).loadBooks([e], { retryUnresolved: true });
+    expect(resolver.resolve).toHaveBeenCalledTimes(1);
+
+    const confident = countingResolver();
+    await makeService(confident).loadBooks([e], { retryUnresolved: true }); // now 0.95 in the cache
+    expect(confident.resolve).not.toHaveBeenCalled();
+  });
+
+  it("does nothing without the flag, or when offline", async () => {
+    store.put(inputKey, book(inputKey, e.title, e.author));
+    const resolver = countingResolver();
+
+    await makeService(resolver).loadBooks([e]);
+    await makeService(resolver).loadBooks([e], { retryUnresolved: true, offline: true });
+
+    expect(resolver.resolve).not.toHaveBeenCalled();
+  });
+});
+
 describe("RecommenderService.recommend diagnostics", () => {
   const csvDir = mkdtempSync("/tmp/bookrec-svc-");
   const csv = (name: string, text: string) => {

@@ -50,7 +50,8 @@ npm start -- recommend --read ../input/read.csv --candidates ../input/candidates
 ```
 
 Flags: `-k`, `-m` (top-m averaged), `--mmr` (1.0 disables diversity), `--db`,
-`--refresh` (ignore cache), `--offline` (cache only), `--json`.
+`--refresh` (ignore cache), `--retry-unresolved` (look up again only books that were
+unresolved or low-confidence), `--offline` (cache only), `--json`.
 
 ## Tests
 
@@ -75,5 +76,10 @@ npm run typecheck
   code (`echo $?`): 137 means the container was killed for memory, 132/139 a native
   crash. Lower the batch size or raise Docker's memory limit, then re-run; finished
   embeddings are kept.
+- Open Library lookups send only the first author (credits such as "- translator" make
+  the search return nothing), strip ", Book N" and audiobook noise from titles, and fall
+  back from an author-scoped query to a title-only one ranked locally. Unresolved
+  lookups are cached, so after upgrading run once with `--retry-unresolved`.
+  Duplicate books in the read list are merged (highest rating kept).
 - Known gaps carried over from the Python version: Open Library matching is fuzzy (weak matches are listed on stderr), and
   there is no Audible importer yet (map its columns in `importers.ts`).
