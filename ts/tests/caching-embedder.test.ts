@@ -63,4 +63,25 @@ describe("CachingEmbedder", () => {
     expect(calls).toEqual([]);
     expect(out).toEqual(vector.map((v) => Math.fround(v)));
   });
+
+  it("embeds in chunks and keeps what finished when a later chunk fails", async () => {
+    const store = new MemoryStore();
+    const calls: string[][] = [];
+    const flaky: Embedder = {
+      embed: async (texts) => {
+        calls.push(texts);
+        if (calls.length === 2) throw new Error("out of memory");
+        return texts.map(() => [1, 0]);
+      },
+    };
+
+    await expect(
+      new CachingEmbedder(flaky, store, "m", { chunkSize: 2 }).embed(["a", "b", "c", "d"]),
+    ).rejects.toThrow("out of memory");
+    expect(calls).toEqual([["a", "b"], ["c", "d"]]);
+
+    const { embedder, calls: retry } = recording();
+    await new CachingEmbedder(embedder, store, "m", { chunkSize: 2 }).embed(["a", "b", "c", "d"]);
+    expect(retry).toEqual([["c", "d"]]);
+  });
 });

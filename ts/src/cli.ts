@@ -95,7 +95,7 @@ async function main(argv: string[]): Promise<number> {
     const service = new RecommenderService({
       resolver: new OpenLibraryResolver(),
       store,
-      embedder: new CachingEmbedder(model, store, model.modelName),
+      embedder: new CachingEmbedder(model, store, model.modelName, { log }),
       log,
     });
     result = await service.recommend({

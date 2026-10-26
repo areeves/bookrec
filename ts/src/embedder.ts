@@ -2,6 +2,9 @@
 import type { Embedder } from "./ports.js";
 
 const DEFAULT_MODEL = "Xenova/all-MiniLM-L6-v2";
+// Each batch is padded to its longest text, so one huge batch can exhaust memory
+// (the process is then killed with no message). Override with BOOKREC_BATCH_SIZE.
+const DEFAULT_BATCH_SIZE = 16;
 
 type Extractor = (
   texts: string[],
@@ -20,7 +23,12 @@ export class TransformersEmbedder implements Embedder {
       return (await pipeline("feature-extraction", this.modelName)) as unknown as Extractor;
     });
     const extract = await this.extractor;
-    const output = await extract(texts, { pooling: "mean", normalize: true });
-    return output.tolist();
+    const size = Math.max(1, Number(process.env.BOOKREC_BATCH_SIZE) || DEFAULT_BATCH_SIZE);
+    const vectors: number[][] = [];
+    for (let start = 0; start < texts.length; start += size) {
+      const output = await extract(texts.slice(start, start + size), { pooling: "mean", normalize: true });
+      vectors.push(...output.tolist());
+    }
+    return vectors;
   }
 }

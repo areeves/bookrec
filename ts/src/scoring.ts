@@ -62,6 +62,19 @@ export function mmrSelect(scores: number[], emb: Matrix, k: number, lambda = 0.7
   return selected;
 }
 
+/** Candidates minus already-read and duplicate books (by work key). */
+export function eligibleCandidates(read: Book[], candidates: Book[]): Book[] {
+  const readKeys = new Set(read.map((b) => b.key));
+  const seen = new Set<string>();
+  const eligible: Book[] = [];
+  for (const c of candidates) {
+    if (readKeys.has(c.key) || seen.has(c.key)) continue;
+    seen.add(c.key);
+    eligible.push(c);
+  }
+  return eligible;
+}
+
 export interface Rec {
   book: Book;
   score: number;
@@ -81,15 +94,7 @@ export async function recommend(
   embedder: Embedder,
   { k = 10, m = 3, mmrLambda = 0.7, explain = 3 }: RecommendOptions = {},
 ): Promise<Rec[]> {
-  const readKeys = new Set(read.map((b) => b.key));
-  const seen = new Set<string>();
-  const cands: Book[] = [];
-  for (const c of candidates) {
-    // drop already-read and duplicate candidates
-    if (readKeys.has(c.key) || seen.has(c.key)) continue;
-    seen.add(c.key);
-    cands.push(c);
-  }
+  const cands = eligibleCandidates(read, candidates);
   if (!read.length || !cands.length) return [];
 
   const a = await embedder.embed(read.map(embedText));

@@ -70,5 +70,10 @@ npm run typecheck
 - Embeddings are cached in the same SQLite file, keyed by (model, sha256 of the
   embedded text), so changed metadata or a different `BOOKREC_MODEL` re-embeds
   automatically. With a warm cache the model is never loaded.
+- Embedding runs in small batches (`BOOKREC_BATCH_SIZE`, default 16) and the cache is
+  saved as it goes. If a run dies with no message after `Scoring...`, check the exit
+  code (`echo $?`): 137 means the container was killed for memory, 132/139 a native
+  crash. Lower the batch size or raise Docker's memory limit, then re-run; finished
+  embeddings are kept.
 - Known gaps carried over from the Python version: Open Library matching is fuzzy (weak matches are listed on stderr), and
   there is no Audible importer yet (map its columns in `importers.ts`).

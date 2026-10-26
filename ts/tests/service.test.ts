@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { book, entry, fallbackKey, type Book } from "../src/models.js";
 import { ResolverError, type BookResolver, type Embedder } from "../src/ports.js";
 import { RecommenderService } from "../src/service.js";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { MemoryStore } from "../src/store.js";
 
 const noEmbedder: Embedder = { embed: async () => [] };
@@ -84,5 +86,40 @@ describe("RecommenderService.loadBooks", () => {
 
     expect(loaded?.key).toBe("OL2W");
     expect(store.get(inputKey)).toEqual(refreshed);
+  });
+});
+
+describe("RecommenderService.recommend diagnostics", () => {
+  const csvDir = mkdtempSync("/tmp/bookrec-svc-");
+  const csv = (name: string, text: string) => {
+    const path = join(csvDir, name);
+    writeFileSync(path, text);
+    return path;
+  };
+  const offline = { offline: true } as const;
+
+  it("reports counts and warns when the read list loads empty", async () => {
+    const result = await makeService(neverResolve).recommend({
+      readPath: csv("empty-read.csv", "Title,Author\n"),
+      candidatesPath: csv("cands.csv", "Title,Author\nDune,Frank Herbert\n"),
+      ...offline,
+    });
+
+    expect(result.recs).toEqual([]);
+    expect(logs).toContain("Read list: 0 book(s), 0 matched on Open Library");
+    expect(logs).toContain("Candidates: 1 book(s), 0 matched on Open Library");
+    expect(logs.some((m) => m.startsWith("warning: the read list has no books"))).toBe(true);
+  });
+
+  it("warns when every candidate is already read", async () => {
+    const same = "Title,Author\nDune,Frank Herbert\n";
+    await makeService(neverResolve).recommend({
+      readPath: csv("read.csv", same),
+      candidatesPath: csv("same-cands.csv", same),
+      ...offline,
+    });
+
+    expect(logs).toContain("Eligible candidates (not already read, no duplicates): 0");
+    expect(logs).toContain("warning: every candidate is already on the read list (or a duplicate).");
   });
 });
