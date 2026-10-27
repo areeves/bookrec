@@ -1,20 +1,17 @@
-FROM python:3.12-slim
+FROM node:22-slim
 
-ENV PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    HF_HOME=/data/hf \
-    BOOKREC_DB=/data/bookrec.sqlite
+ENV NODE_ENV=production \
+    BOOKREC_DB=/data/bookrec.sqlite \
+    BOOKREC_MODEL_CACHE=/data/models
 
 WORKDIR /app
 
-# CPU-only PyTorch keeps the image far smaller than the default CUDA build.
-RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
+COPY package.json package-lock.json ./
+# tsx runs the TypeScript directly, so dev dependencies are needed at runtime.
+RUN npm ci --include=dev
 
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
+COPY tsconfig.json ./
 COPY src ./src
-ENV PYTHONPATH=/app/src
 
-ENTRYPOINT ["python", "-m", "bookrec"]
+ENTRYPOINT ["npx", "--no-install", "tsx", "src/cli.ts"]
 CMD ["--help"]

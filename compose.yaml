@@ -1,10 +1,12 @@
 services:
   app:
     build: .
-    image: bookrec:dev
+    image: bookrec-ts:dev
+    environment:
+      NODE_OPTIONS: --disable-warning=ExperimentalWarning
     volumes:
-      - bookrec-data:/data      # SQLite cache + Hugging Face model cache
-      - ./input:/input:ro       # your List A / List B files
+      - bookrec-data:/data      # SQLite cache + downloaded embedding model
+      - ./input:/input:ro
       - ./src:/app/src          # edit code without rebuilding the image
 
 volumes:
